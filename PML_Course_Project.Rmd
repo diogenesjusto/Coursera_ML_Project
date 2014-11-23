@@ -1,0 +1,125 @@
+---
+title: "Coursera's Practical Machine Learning Course - Course Project"
+author: "Diogenes A. R. Justo"
+date: "Sunday, November 23, 2014"
+output: html_document
+---
+
+This is the course project activity to Coursera's Course titled "Practical Machine Learning". The goal in this project is to predict the manner how some guys did exercises. For this, we will use one data set ([Velose et al]) with a lot of information from guys that had used some eletronic gadgets to collect data from themselves making exercises.
+
+There are 5 classes of exercises: classes A to E.
+
+###0. Preparing Libraries
+First we load libraries that will be used on this job.
+
+```{r}
+library(data.table)
+library(caret)
+library(ggplot2)
+library(knitr)
+library(xtable)
+library(randomForest)
+```
+
+###1. Getting and loading data
+Be sure you get pml-training.csv and pml-testing.csv:
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv> and;
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+Or just check-out in my repo at GitHub:
+<https://github.com/diogenesjusto/Coursera_ML_Project>
+
+This files must bu placed on working directory (check it with getwd()).
+
+```{r, echo=FALSE}
+train <- read.csv("pml-training.csv")
+```
+
+If you have a old computer (like me) be patient because it is a mid-large dataset.
+
+###2. Data exploration
+You can verify in a easy way that there a lot of information to work, just checking total of columns, and a large number of observations.
+```{r, echo=TRUE}
+ncol(train)
+nrow(train)
+```
+
+It will be a good idea to choose some algoritm that run well on this approach. I made a choice of using Random Forests.
+
+Additionaly, checking out information, we saw a lot of NA's data, and we must made some cleaning.
+
+###3. Preprocessing
+For data clean we prepare a new fuction to load and clean division by zero, and after re-load data. Also we treat NA's. 
+
+```{r, echo=TRUE}
+read.pml <- function(file) {
+fread(file, na.strings=c("#DIV/0!", ""))
+}
+
+raw.train <- read.pml("pml-training.csv")
+raw.validation <- read.pml("pml-testing.csv")
+set.seed(13)
+
+## contains some NA values
+na.cols <- raw.train[,sapply(.SD, function(x) any(is.na(x)))]
+```
+
+There are some columns that seems to be metadata or classifier. This columns I choose to eliminate:
+    - unlabled row index 
+    - user_name
+    - raw_timestamp_part_1
+    - raw_timestamp_part_2
+    - cvtd_timestamp
+    - new_window
+    - num_window
+    
+```{r, echo=TRUE}
+drop.columns <- function(x) {
+x[,!c("V1", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window"),with=F]
+}
+transform.features <- function(x) {
+x[,classe:=factor(classe)]
+}
+## try only columns that have values
+training.features <- drop.columns(raw.train[,eval(names(which(na.cols == F))),with=F])
+```
+
+###4. Cross Validation
+
+Splitting the training data into two subsets (training and testing) we reach cross validation. The choice of sampling data by classe field was intended to have classes on train and test subset:
+
+```{r, echo=TRUE}
+in.train <- createDataPartition(training.features$classe, p=.60, list=FALSE)
+
+train <- training.features[in.train[,1]]
+test <- training.features[-in.train[,1]]
+```
+
+###5. Random Forest Model
+
+The random forest model is setting up by using training data. The confusion matrix showed above, tell us that accuracy of model is pretty well:
+
+```{r, echo=TRUE}
+model.rf <- train(y=as.factor(train$classe), x=train[,!"classe",with=F], 
+  tuneGrid=data.frame(mtry=3), trControl=trainControl(method="none"), method="rf")
+confusionMatrix(predict(model.rf, newdata=transform.features(test)),
+  factor(test$classe))
+```
+
+Estimation of error sample reflect Kappa Statistics of: confusionMatrix(predict(model.rf, newdata=transform.features(test)), factor(test$classe))$overall["Kappa"]
+
+###6. Variable Importance
+
+For analsys to variable importance, we make a plot ordered above:
+```{r, echo=FALSE}
+print(plot(varImp(model.rf, scale = FALSE)))
+```
+
+###7. Conclusion
+Verifing confusion matrix and analysing error statistics, we can conclude that this model satisfy our needs to predict classe field, and is a good prediction model to be used on 20's rows test data set.
+
+By submiting all results on site submission area, I reached 100% of results, verifing my hipothesis.
+
+###References
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
